@@ -1,0 +1,4 @@
+sample.webm
+*.log
+node_modules/
+.DS_Store

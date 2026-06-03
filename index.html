@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#07111f" />
+  <title>ClipForge</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <style>
+    :root { color-scheme: dark; --cyan:#22d3ee; --emerald:#34d399; --ink:#07111f; --panel:rgba(15,23,42,.78); --line:rgba(148,163,184,.28); }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin:0; min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#e5f7ff; background: radial-gradient(circle at 20% 0%, rgba(34,211,238,.24), transparent 34%), radial-gradient(circle at 85% 20%, rgba(52,211,153,.18), transparent 32%), linear-gradient(160deg,#020617,#07111f 48%,#0f172a); }
+    .wrap { width:min(960px,100%); margin:0 auto; padding:18px 14px 28px; }
+    header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .icon { width:48px; height:48px; border-radius:16px; background:linear-gradient(135deg,var(--cyan),var(--emerald)); display:grid; place-items:center; box-shadow:0 16px 40px rgba(34,211,238,.2); }
+    h1 { margin:0; font-size:30px; letter-spacing:-.04em; }
+    .sub { margin:2px 0 0; color:#9fb6c8; font-size:14px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(0,0,0,.35); backdrop-filter:blur(16px); overflow:hidden; }
+    .section { padding:14px; border-top:1px solid var(--line); }
+    .section:first-child { border-top:0; }
+    label.pick { display:block; border:1.5px dashed rgba(34,211,238,.45); border-radius:20px; padding:22px; text-align:center; background:rgba(8,47,73,.28); cursor:pointer; }
+    label.pick input { display:none; }
+    .pick strong { display:block; font-size:18px; margin-bottom:6px; }
+    .hint { color:#9fb6c8; font-size:13px; line-height:1.35; }
+    video { width:100%; max-height:52vh; border-radius:18px; background:#020617; display:block; border:1px solid rgba(148,163,184,.22); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .field { background:rgba(15,23,42,.7); border:1px solid rgba(148,163,184,.22); border-radius:16px; padding:12px; }
+    .field span { display:block; color:#9fb6c8; font-size:12px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
+    .field strong { font-variant-numeric:tabular-nums; font-size:18px; }
+    input[type=range] { width:100%; accent-color:var(--cyan); }
+    input[type=number] { width:100%; margin-top:8px; padding:10px; border-radius:12px; border:1px solid rgba(148,163,184,.3); background:rgba(2,6,23,.75); color:#e5f7ff; font-size:16px; }
+    .buttons { display:flex; gap:10px; flex-wrap:wrap; }
+    button, .download { border:0; border-radius:16px; padding:12px 14px; color:#06121f; font-weight:800; background:linear-gradient(135deg,var(--cyan),var(--emerald)); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:46px; }
+    button.secondary { color:#dff7ff; background:rgba(30,41,59,.82); border:1px solid rgba(148,163,184,.24); }
+    button.danger { color:#fee2e2; background:rgba(127,29,29,.78); border:1px solid rgba(248,113,113,.25); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .status { border-radius:16px; padding:12px; color:#dbeafe; background:rgba(30,64,175,.24); border:1px solid rgba(96,165,250,.24); font-size:14px; line-height:1.35; }
+    .status.ok { color:#d1fae5; background:rgba(6,95,70,.22); border-color:rgba(52,211,153,.24); }
+    .status.warn { color:#fef3c7; background:rgba(146,64,14,.22); border-color:rgba(251,191,36,.24); }
+    .timeline { height:12px; border-radius:999px; background:#1e293b; position:relative; overflow:hidden; margin-top:8px; }
+    .window { position:absolute; top:0; bottom:0; background:linear-gradient(90deg,var(--cyan),var(--emerald)); opacity:.85; }
+    .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#cbd5e1; }
+    @media (max-width:640px) { .grid { grid-template-columns:1fr; } .buttons button, .download { flex:1 1 100%; } h1{font-size:28px;} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="icon">✂️</div>
+      <div>
+        <h1>ClipForge</h1>
+        <p class="sub">Simple local video trimming PWA</p>
+      </div>
+    </header>
+
+    <main class="panel">
+      <section class="section">
+        <label class="pick">
+          <input id="file" type="file" accept="video/*" />
+          <strong>Choose a video</strong>
+          <span class="hint">Nothing is uploaded. The file stays on this device.</span>
+        </label>
+      </section>
+
+      <section class="section" id="editor" hidden>
+        <video id="video" controls playsinline></video>
+        <p class="name" id="fileName"></p>
+      </section>
+
+      <section class="section" id="trim" hidden>
+        <div class="grid">
+          <div class="field">
+            <span>Start</span>
+            <strong id="startLabel">00:00.0</strong>
+            <input id="startRange" type="range" min="0" max="0" step="0.1" value="0" />
+            <input id="startNumber" type="number" min="0" step="0.1" value="0" />
+          </div>
+          <div class="field">
+            <span>End</span>
+            <strong id="endLabel">00:00.0</strong>
+            <input id="endRange" type="range" min="0" max="0" step="0.1" value="0" />
+            <input id="endNumber" type="number" min="0" step="0.1" value="0" />
+          </div>
+        </div>
+        <div class="timeline"><div class="window" id="window"></div></div>
+      </section>
+
+      <section class="section" id="actions" hidden>
+        <div class="buttons">
+          <button id="previewBtn" class="secondary">▶ Preview trim</button>
+          <button id="startHereBtn" class="secondary">Set start here</button>
+          <button id="endHereBtn" class="secondary">Set end here</button>
+          <button id="exportBtn">⬇ Export trim</button>
+          <button id="resetBtn" class="danger">Reset</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <div id="status" class="status warn">MVP: exports as WebM. Best on Android Chrome. Large videos may be slow.</div>
+      </section>
+
+      <section class="section" id="result" hidden>
+        <a id="download" class="download" href="#" download="clip-trimmed.webm">Download trimmed video</a>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    function clampRange(start, end, duration) {
+      var safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+      var safeStart = Number.isFinite(start) ? start : 0;
+      var safeEnd = Number.isFinite(end) ? end : safeDuration;
+      safeStart = Math.max(0, Math.min(safeStart, safeDuration));
+      safeEnd = Math.max(0, Math.min(safeEnd, safeDuration));
+      if (safeDuration && safeEnd <= safeStart) {
+        safeEnd = Math.min(safeDuration, safeStart + 1);
+        if (safeEnd <= safeStart) safeStart = Math.max(0, safeEnd - 1);
+      }
+      return { start: safeStart, end: safeEnd };
+    }
+
+    function formatTime(seconds) {
+      var safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+      var total = Math.floor(safe);
+      var mins = Math.floor(total / 60);
+      var secs = total % 60;
+      var tenths = Math.floor((safe - total) * 10);
+      return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0') + '.' + tenths;
+    }
+
+    function exportFileName(originalName) {
+      var base = String(originalName || 'video').replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'video';
+      return base + '-trimmed.webm';
+    }
+
+    var fileInput = document.getElementById('file');
+    var video = document.getElementById('video');
+    var editor = document.getElementById('editor');
+    var trim = document.getElementById('trim');
+    var actions = document.getElementById('actions');
+    var result = document.getElementById('result');
+    var statusBox = document.getElementById('status');
+    var fileName = document.getElementById('fileName');
+    var startRange = document.getElementById('startRange');
+    var endRange = document.getElementById('endRange');
+    var startNumber = document.getElementById('startNumber');
+    var endNumber = document.getElementById('endNumber');
+    var startLabel = document.getElementById('startLabel');
+    var endLabel = document.getElementById('endLabel');
+    var windowBar = document.getElementById('window');
+    var previewBtn = document.getElementById('previewBtn');
+    var startHereBtn = document.getElementById('startHereBtn');
+    var endHereBtn = document.getElementById('endHereBtn');
+    var exportBtn = document.getElementById('exportBtn');
+    var resetBtn = document.getElementById('resetBtn');
+    var download = document.getElementById('download');
+
+    var currentUrl = '';
+    var currentFileName = 'clip.webm';
+    var exportUrl = '';
+    var start = 0;
+    var end = 0;
+    var exporting = false;
+
+    function setStatus(message, kind) {
+      statusBox.textContent = message;
+      statusBox.className = 'status ' + (kind || '');
+    }
+
+    function syncInputs() {
+      var range = clampRange(start, end, video.duration || 0);
+      start = range.start;
+      end = range.end;
+      startRange.value = start;
+      endRange.value = end;
+      startNumber.value = start.toFixed(1);
+      endNumber.value = end.toFixed(1);
+      startLabel.textContent = formatTime(start);
+      endLabel.textContent = formatTime(end);
+      var duration = video.duration || 1;
+      windowBar.style.left = ((start / duration) * 100) + '%';
+      windowBar.style.width = (Math.max(0, (end - start) / duration) * 100) + '%';
+      exportBtn.disabled = !video.src || exporting || end <= start;
+    }
+
+    function setBounds(duration) {
+      [startRange, endRange, startNumber, endNumber].forEach(function(input) {
+        input.max = duration.toFixed(1);
+      });
+      start = 0;
+      end = duration;
+      syncInputs();
+    }
+
+    function setFromInput(which, value) {
+      if (which === 'start') start = parseFloat(value);
+      if (which === 'end') end = parseFloat(value);
+      syncInputs();
+    }
+
+    fileInput.addEventListener('change', function(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+      if (exportUrl) URL.revokeObjectURL(exportUrl);
+      exportUrl = '';
+      result.hidden = true;
+      currentFileName = file.name || 'clip.webm';
+      currentUrl = URL.createObjectURL(file);
+      video.src = currentUrl;
+      fileName.textContent = currentFileName;
+      editor.hidden = false;
+      trim.hidden = false;
+      actions.hidden = false;
+      setStatus('Loading video metadata...', '');
+    });
+
+    video.addEventListener('loadedmetadata', function() {
+      setBounds(video.duration || 0);
+      setStatus('Ready. Set start/end, preview, then export.', 'ok');
+    });
+
+    startRange.addEventListener('input', function(e) { setFromInput('start', e.target.value); });
+    endRange.addEventListener('input', function(e) { setFromInput('end', e.target.value); });
+    startNumber.addEventListener('input', function(e) { setFromInput('start', e.target.value); });
+    endNumber.addEventListener('input', function(e) { setFromInput('end', e.target.value); });
+
+    previewBtn.addEventListener('click', function() {
+      if (!video.src) return;
+      video.currentTime = start;
+      video.play();
+      setStatus('Previewing selected range...', '');
+    });
+
+    video.addEventListener('timeupdate', function() {
+      if (!exporting && end > start && video.currentTime >= end) {
+        video.pause();
+        video.currentTime = start;
+        setStatus('Preview stopped at trim end.', 'ok');
+      }
+    });
+
+    startHereBtn.addEventListener('click', function() { start = video.currentTime || 0; syncInputs(); });
+    endHereBtn.addEventListener('click', function() { end = video.currentTime || end; syncInputs(); });
+
+    resetBtn.addEventListener('click', function() {
+      if (!video.duration) return;
+      setBounds(video.duration);
+      result.hidden = true;
+      setStatus('Trim reset.', 'ok');
+    });
+
+    exportBtn.addEventListener('click', function() {
+      if (!video.src || exporting) return;
+      var capture = video.captureStream || video.mozCaptureStream;
+      if (!capture || typeof MediaRecorder === 'undefined') {
+        setStatus('This browser cannot export video here. Try Android Chrome.', 'warn');
+        return;
+      }
+
+      var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+      var chunks = [];
+      var stream = capture.call(video);
+      var recorder;
+
+      try {
+        recorder = new MediaRecorder(stream, { mimeType: mime });
+      } catch (err) {
+        setStatus('Could not start recorder: ' + err.message, 'warn');
+        return;
+      }
+
+      exporting = true;
+      exportBtn.disabled = true;
+      result.hidden = true;
+      setStatus('Exporting... keep this tab open. Recording happens in real time.', '');
+
+      recorder.ondataavailable = function(event) {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onstop = function() {
+        exporting = false;
+        var blob = new Blob(chunks, { type: 'video/webm' });
+        if (exportUrl) URL.revokeObjectURL(exportUrl);
+        exportUrl = URL.createObjectURL(blob);
+        download.href = exportUrl;
+        download.download = exportFileName(currentFileName);
+        result.hidden = false;
+        syncInputs();
+        setStatus('Export ready: ' + download.download, 'ok');
+      };
+
+      function stopAtEnd() {
+        if (!exporting) return;
+        if (video.currentTime >= end || video.ended) {
+          video.removeEventListener('timeupdate', stopAtEnd);
+          video.pause();
+          try { recorder.stop(); } catch (err) {}
+          return;
+        }
+        requestAnimationFrame(stopAtEnd);
+      }
+
+      video.currentTime = start;
+      video.onseeked = function() {
+        video.onseeked = null;
+        recorder.start(250);
+        video.play().then(function() {
+          requestAnimationFrame(stopAtEnd);
+        }).catch(function(err) {
+          exporting = false;
+          try { recorder.stop(); } catch (e) {}
+          setStatus('Could not play for export: ' + err.message, 'warn');
+          syncInputs();
+        });
+      };
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('./sw.js').catch(function() {});
+      });
+    }
+  </script>
+</body>
+</html>
