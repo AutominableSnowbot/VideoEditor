@@ -40,6 +40,8 @@
     .status { border-radius:16px; padding:12px; color:#dbeafe; background:rgba(30,64,175,.24); border:1px solid rgba(96,165,250,.24); font-size:14px; line-height:1.35; }
     .status.ok { color:#d1fae5; background:rgba(6,95,70,.22); border-color:rgba(52,211,153,.24); }
     .status.warn { color:#fef3c7; background:rgba(146,64,14,.22); border-color:rgba(251,191,36,.24); }
+    .notify-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .notify-row .hint { flex:1 1 220px; }
     .timeline { height:12px; border-radius:999px; background:#1e293b; position:relative; overflow:hidden; margin-top:8px; }
     .window { position:absolute; top:0; bottom:0; background:linear-gradient(90deg,var(--cyan),var(--emerald)); opacity:.85; }
     .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#cbd5e1; }
@@ -98,6 +100,16 @@
         </div>
       </section>
 
+      <section class="section" id="notifySection" hidden>
+        <div class="notify-row">
+          <div>
+            <strong>Export notification</strong>
+            <div class="hint" id="notifyHint">Optional: get a browser notification when the download is ready.</div>
+          </div>
+          <button id="notifyBtn" class="secondary">Enable notifications</button>
+        </div>
+      </section>
+
       <section class="section">
         <div id="status" class="status warn">MVP: exports MP4 in-browser. First export loads a large FFmpeg engine, so keep this tab open.</div>
       </section>
@@ -137,13 +149,19 @@
       return base + '-trimmed.' + safeExtension;
     }
 
+    function exportReadyMessage(fileName) {
+      return 'Your trimmed video is ready: ' + (fileName || 'clip-trimmed.mp4');
+    }
+
     var fileInput = document.getElementById('file');
     var video = document.getElementById('video');
     var editor = document.getElementById('editor');
     var trim = document.getElementById('trim');
     var actions = document.getElementById('actions');
+    var notifySection = document.getElementById('notifySection');
     var result = document.getElementById('result');
     var statusBox = document.getElementById('status');
+    var notifyHint = document.getElementById('notifyHint');
     var fileName = document.getElementById('fileName');
     var startRange = document.getElementById('startRange');
     var endRange = document.getElementById('endRange');
@@ -157,6 +175,7 @@
     var endHereBtn = document.getElementById('endHereBtn');
     var exportBtn = document.getElementById('exportBtn');
     var resetBtn = document.getElementById('resetBtn');
+    var notifyBtn = document.getElementById('notifyBtn');
     var download = document.getElementById('download');
 
     var currentFile = null;
@@ -171,6 +190,65 @@
     function setStatus(message, kind) {
       statusBox.textContent = message;
       statusBox.className = 'status ' + (kind || '');
+    }
+
+    function supportsNotifications() {
+      return typeof Notification !== 'undefined' && window.isSecureContext;
+    }
+
+    function updateNotificationUi() {
+      if (!supportsNotifications()) {
+        notifyBtn.disabled = true;
+        notifyHint.textContent = 'Browser notifications are not available here. Export will still finish in the app.';
+        return;
+      }
+      if (Notification.permission === 'granted') {
+        notifyBtn.disabled = true;
+        notifyBtn.textContent = 'Notifications enabled';
+        notifyHint.textContent = 'You will get a browser notification when the download is ready.';
+      } else if (Notification.permission === 'denied') {
+        notifyBtn.disabled = true;
+        notifyBtn.textContent = 'Notifications blocked';
+        notifyHint.textContent = 'Notifications are blocked for this site. Re-enable them in browser site settings if wanted.';
+      } else {
+        notifyBtn.disabled = false;
+        notifyBtn.textContent = 'Enable notifications';
+        notifyHint.textContent = 'Optional: get a browser notification when the download is ready.';
+      }
+    }
+
+    function requestExportNotifications() {
+      if (!supportsNotifications()) {
+        updateNotificationUi();
+        return;
+      }
+      Notification.requestPermission().then(function() {
+        updateNotificationUi();
+      });
+    }
+
+    function notifyExportReady(fileName) {
+      if (!supportsNotifications() || Notification.permission !== 'granted') return;
+      var message = exportReadyMessage(fileName);
+      var options = {
+        body: 'Tap back to ClipForge to download it.',
+        icon: './icon-192.png',
+        tag: 'clipforge-export-ready'
+      };
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(function(registration) {
+          if (registration.showNotification) {
+            registration.showNotification(message, options);
+          } else {
+            new Notification(message, options);
+          }
+        }).catch(function() {
+          new Notification(message, options);
+        });
+      } else {
+        new Notification(message, options);
+      }
+      if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
     }
 
     function syncInputs() {
@@ -366,6 +444,7 @@
       download.download = exported.name;
       result.hidden = false;
       setStatus('Export ready: ' + exported.name, exported.extension === 'mp4' ? 'ok' : 'warn');
+      notifyExportReady(exported.name);
     }
 
     fileInput.addEventListener('change', function(event) {
@@ -383,6 +462,8 @@
       editor.hidden = false;
       trim.hidden = false;
       actions.hidden = false;
+      notifySection.hidden = false;
+      updateNotificationUi();
       setStatus('Loading video metadata...', '');
     });
 
@@ -413,6 +494,7 @@
 
     startHereBtn.addEventListener('click', function() { start = video.currentTime || 0; syncInputs(); });
     endHereBtn.addEventListener('click', function() { end = video.currentTime || end; syncInputs(); });
+    notifyBtn.addEventListener('click', requestExportNotifications);
 
     resetBtn.addEventListener('click', function() {
       if (!video.duration) return;

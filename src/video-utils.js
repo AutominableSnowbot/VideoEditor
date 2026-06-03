@@ -32,4 +32,8 @@ function exportFileName(originalName, extension) {
   return base + '-trimmed.' + safeExtension;
 }
 
-export { clampRange, formatTime, exportFileName };
+function exportReadyMessage(fileName) {
+  return 'Your trimmed video is ready: ' + (fileName || 'clip-trimmed.mp4');
+}
+
+export { clampRange, formatTime, exportFileName, exportReadyMessage };

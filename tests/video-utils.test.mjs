@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampRange, formatTime, exportFileName } from '../src/video-utils.js';
+import { clampRange, formatTime, exportFileName, exportReadyMessage } from '../src/video-utils.js';
 
 test('clampRange keeps trim values inside the video duration', () => {
   assert.deepEqual(clampRange(-5, 120, 60), { start: 0, end: 60 });
@@ -21,4 +21,9 @@ test('exportFileName creates a safe mp4 name by default', () => {
 
 test('exportFileName can create fallback webm names', () => {
   assert.equal(exportFileName('My Clip!.mp4', 'webm'), 'My-Clip-trimmed.webm');
+});
+
+test('exportReadyMessage names the finished file', () => {
+  assert.equal(exportReadyMessage('My-Clip-trimmed.mp4'), 'Your trimmed video is ready: My-Clip-trimmed.mp4');
+  assert.equal(exportReadyMessage(''), 'Your trimmed video is ready: clip-trimmed.mp4');
 });
