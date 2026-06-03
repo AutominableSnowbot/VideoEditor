@@ -7,19 +7,20 @@ A tiny local-first video editing PWA.
 - Pick a local video file.
 - Preview it in-browser.
 - Set trim start/end times.
-- Export the selected range as `.webm` using browser `MediaRecorder`.
+- Export the selected range as `.mp4` using browser-loaded `ffmpeg.wasm`.
+- Falls back to `.webm` recording if MP4 export fails.
 - No upload, no backend, no cloud processing.
 
 ## Important limitations
 
-- Export is `.webm`, not `.mp4` yet.
-- Export speed is roughly real-time because the browser records playback.
-- Large/high-resolution files may be slow or hit phone memory limits.
-- Best first target is Android Chrome.
+- First MP4 export downloads a large FFmpeg WebAssembly engine.
+- MP4 export can be slow and memory-heavy, especially on phones or large files.
+- Firefox desktop works for short clips in local testing; mobile browsers may vary.
+- WebM fallback still records playback roughly in real time.
 
 ## Files
 
-- `index.html` — app UI and browser recording logic.
+- `index.html` — app UI plus MP4/WebM export logic.
 - `manifest.json` — PWA metadata.
 - `sw.js` — offline shell cache.
 - `src/video-utils.js` and `tests/` — small helper tests.
