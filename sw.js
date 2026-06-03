@@ -1,4 +1,4 @@
-const CACHE = 'video-editor-v2';
+const CACHE = 'video-editor-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -31,5 +31,17 @@ self.addEventListener('fetch', function(event) {
       caches.open(CACHE).then(function(cache) { cache.put(event.request, copy); }).catch(function() {});
       return response;
     }).catch(function() { return cached; });
+  }));
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+    for (var i = 0; i < clientList.length; i++) {
+      if (clientList[i].url.indexOf('/VideoEditor/') !== -1 && 'focus' in clientList[i]) {
+        return clientList[i].focus();
+      }
+    }
+    if (clients.openWindow) return clients.openWindow('./');
   }));
 });
