@@ -15,6 +15,10 @@ test('formatTime shows mm:ss.t', () => {
   assert.equal(formatTime(0), '00:00.0');
 });
 
-test('exportFileName creates a safe webm name', () => {
-  assert.equal(exportFileName('My Clip!.mp4'), 'My-Clip-trimmed.webm');
+test('exportFileName creates a safe mp4 name by default', () => {
+  assert.equal(exportFileName('My Clip!.mov'), 'My-Clip-trimmed.mp4');
+});
+
+test('exportFileName can create fallback webm names', () => {
+  assert.equal(exportFileName('My Clip!.mp4', 'webm'), 'My-Clip-trimmed.webm');
 });

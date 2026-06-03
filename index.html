@@ -99,11 +99,11 @@
       </section>
 
       <section class="section">
-        <div id="status" class="status warn">MVP: exports as WebM. Best on Android Chrome. Large videos may be slow.</div>
+        <div id="status" class="status warn">MVP: exports MP4 in-browser. First export loads a large FFmpeg engine, so keep this tab open.</div>
       </section>
 
       <section class="section" id="result" hidden>
-        <a id="download" class="download" href="#" download="clip-trimmed.webm">Download trimmed video</a>
+        <a id="download" class="download" href="#" download="clip-trimmed.mp4">Download trimmed video</a>
       </section>
     </main>
   </div>
@@ -131,9 +131,10 @@
       return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0') + '.' + tenths;
     }
 
-    function exportFileName(originalName) {
+    function exportFileName(originalName, extension) {
+      var safeExtension = String(extension || 'mp4').replace(/[^a-z0-9]+/gi, '').toLowerCase() || 'mp4';
       var base = String(originalName || 'video').replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'video';
-      return base + '-trimmed.webm';
+      return base + '-trimmed.' + safeExtension;
     }
 
     var fileInput = document.getElementById('file');
@@ -158,12 +159,14 @@
     var resetBtn = document.getElementById('resetBtn');
     var download = document.getElementById('download');
 
+    var currentFile = null;
     var currentUrl = '';
-    var currentFileName = 'clip.webm';
+    var currentFileName = 'clip.mp4';
     var exportUrl = '';
     var start = 0;
     var end = 0;
     var exporting = false;
+    var ffmpegInstance = null;
 
     function setStatus(message, kind) {
       statusBox.textContent = message;
@@ -201,6 +204,170 @@
       syncInputs();
     }
 
+    function inputFileName(name) {
+      var safe = String(name || 'input').replace(/[^a-z0-9_.-]+/gi, '-') || 'input';
+      return safe.indexOf('.') === -1 ? safe + '.video' : safe;
+    }
+
+    function toBlobURL(url, mimeType, progressLabel) {
+      return fetch(url).then(function(response) {
+        if (!response.ok) throw new Error('Could not load FFmpeg asset: ' + response.status);
+        var length = parseInt(response.headers.get('content-length') || '0', 10);
+        if (!response.body || !response.body.getReader) return response.arrayBuffer();
+        var reader = response.body.getReader();
+        var chunks = [];
+        var received = 0;
+        function pump() {
+          return reader.read().then(function(result) {
+            if (result.done) {
+              var bytes = new Uint8Array(received);
+              var offset = 0;
+              chunks.forEach(function(chunk) { bytes.set(chunk, offset); offset += chunk.length; });
+              return bytes.buffer;
+            }
+            chunks.push(result.value);
+            received += result.value.length;
+            if (length && progressLabel) {
+              setStatus(progressLabel + ' ' + Math.round((received / length) * 100) + '%', '');
+            }
+            return pump();
+          });
+        }
+        return pump();
+      }).then(function(buffer) {
+        return URL.createObjectURL(new Blob([buffer], { type: mimeType }));
+      });
+    }
+
+    function loadPatchedWorkerURL() {
+      var workerUrl = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/worker.js';
+      return fetch(workerUrl).then(function(response) {
+        if (!response.ok) throw new Error('Could not load FFmpeg worker: ' + response.status);
+        return response.text();
+      }).then(function(source) {
+        source = source
+          .replaceAll('"./const.js"', '"https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/const.js"')
+          .replaceAll('"./errors.js"', '"https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/errors.js"');
+        return URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      });
+    }
+
+    function loadFfmpeg() {
+      if (ffmpegInstance) return Promise.resolve(ffmpegInstance);
+      setStatus('Loading FFmpeg engine... this is a large one-time download.', '');
+      return import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js').then(function(module) {
+        var ffmpeg = new module.FFmpeg();
+        ffmpeg.on('progress', function(event) {
+          if (event && Number.isFinite(event.progress)) {
+            setStatus('Encoding MP4... ' + Math.max(0, Math.min(100, Math.round(event.progress * 100))) + '%', '');
+          }
+        });
+        var coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+        return Promise.all([
+          loadPatchedWorkerURL(),
+          toBlobURL(coreBase + '/ffmpeg-core.js', 'text/javascript', 'Loading FFmpeg core'),
+          toBlobURL(coreBase + '/ffmpeg-core.wasm', 'application/wasm', 'Loading FFmpeg wasm')
+        ]).then(function(urls) {
+          return ffmpeg.load({ classWorkerURL: urls[0], coreURL: urls[1], wasmURL: urls[2] });
+        }).then(function() {
+          ffmpegInstance = ffmpeg;
+          return ffmpegInstance;
+        });
+      });
+    }
+
+    function exportMp4() {
+      if (!currentFile) return Promise.reject(new Error('No video selected'));
+      var duration = Math.max(0.1, end - start);
+      var sourceName = inputFileName(currentFileName);
+      var outputName = exportFileName(currentFileName, 'mp4');
+      return loadFfmpeg().then(function(ffmpeg) {
+        setStatus('Preparing MP4 export...', '');
+        return currentFile.arrayBuffer().then(function(buffer) {
+          return ffmpeg.writeFile(sourceName, new Uint8Array(buffer));
+        }).then(function() {
+          setStatus('Encoding MP4... keep this tab open.', '');
+          return ffmpeg.exec([
+            '-ss', String(start),
+            '-t', String(duration),
+            '-i', sourceName,
+            '-map', '0:v:0',
+            '-map', '0:a?',
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '23',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            '-movflags', 'faststart',
+            outputName
+          ]);
+        }).then(function(code) {
+          if (code !== 0) throw new Error('FFmpeg returned ' + code);
+          return ffmpeg.readFile(outputName);
+        }).then(function(data) {
+          try { ffmpeg.deleteFile(sourceName); } catch (err) {}
+          try { ffmpeg.deleteFile(outputName); } catch (err) {}
+          return { blob: new Blob([data], { type: 'video/mp4' }), name: outputName, extension: 'mp4' };
+        });
+      });
+    }
+
+    function exportWebmFallback() {
+      return new Promise(function(resolve, reject) {
+        var capture = video.captureStream || video.mozCaptureStream;
+        if (!capture || typeof MediaRecorder === 'undefined') {
+          reject(new Error('This browser cannot use the WebM fallback either.'));
+          return;
+        }
+        var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+        var chunks = [];
+        var stream = capture.call(video);
+        var recorder;
+        try {
+          recorder = new MediaRecorder(stream, { mimeType: mime });
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        recorder.ondataavailable = function(event) {
+          if (event.data && event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onstop = function() {
+          resolve({ blob: new Blob(chunks, { type: 'video/webm' }), name: exportFileName(currentFileName, 'webm'), extension: 'webm' });
+        };
+        function stopAtEnd() {
+          if (!exporting) return;
+          if (video.currentTime >= end || video.ended) {
+            video.pause();
+            try { recorder.stop(); } catch (err) {}
+            return;
+          }
+          requestAnimationFrame(stopAtEnd);
+        }
+        video.currentTime = start;
+        video.onseeked = function() {
+          video.onseeked = null;
+          recorder.start(250);
+          video.play().then(function() {
+            requestAnimationFrame(stopAtEnd);
+          }).catch(function(err) {
+            try { recorder.stop(); } catch (e) {}
+            reject(err);
+          });
+        };
+      });
+    }
+
+    function finishExport(exported) {
+      if (exportUrl) URL.revokeObjectURL(exportUrl);
+      exportUrl = URL.createObjectURL(exported.blob);
+      download.href = exportUrl;
+      download.download = exported.name;
+      result.hidden = false;
+      setStatus('Export ready: ' + exported.name, exported.extension === 'mp4' ? 'ok' : 'warn');
+    }
+
     fileInput.addEventListener('change', function(event) {
       var file = event.target.files[0];
       if (!file) return;
@@ -208,7 +375,8 @@
       if (exportUrl) URL.revokeObjectURL(exportUrl);
       exportUrl = '';
       result.hidden = true;
-      currentFileName = file.name || 'clip.webm';
+      currentFile = file;
+      currentFileName = file.name || 'clip.mp4';
       currentUrl = URL.createObjectURL(file);
       video.src = currentUrl;
       fileName.textContent = currentFileName;
@@ -255,68 +423,26 @@
 
     exportBtn.addEventListener('click', function() {
       if (!video.src || exporting) return;
-      var capture = video.captureStream || video.mozCaptureStream;
-      if (!capture || typeof MediaRecorder === 'undefined') {
-        setStatus('This browser cannot export video here. Try Android Chrome.', 'warn');
-        return;
-      }
-
-      var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
-      var chunks = [];
-      var stream = capture.call(video);
-      var recorder;
-
-      try {
-        recorder = new MediaRecorder(stream, { mimeType: mime });
-      } catch (err) {
-        setStatus('Could not start recorder: ' + err.message, 'warn');
-        return;
-      }
-
       exporting = true;
       exportBtn.disabled = true;
       result.hidden = true;
-      setStatus('Exporting... keep this tab open. Recording happens in real time.', '');
+      setStatus('Exporting MP4... keep this tab open.', '');
 
-      recorder.ondataavailable = function(event) {
-        if (event.data && event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onstop = function() {
-        exporting = false;
-        var blob = new Blob(chunks, { type: 'video/webm' });
-        if (exportUrl) URL.revokeObjectURL(exportUrl);
-        exportUrl = URL.createObjectURL(blob);
-        download.href = exportUrl;
-        download.download = exportFileName(currentFileName);
-        result.hidden = false;
-        syncInputs();
-        setStatus('Export ready: ' + download.download, 'ok');
-      };
-
-      function stopAtEnd() {
-        if (!exporting) return;
-        if (video.currentTime >= end || video.ended) {
-          video.removeEventListener('timeupdate', stopAtEnd);
-          video.pause();
-          try { recorder.stop(); } catch (err) {}
-          return;
-        }
-        requestAnimationFrame(stopAtEnd);
-      }
-
-      video.currentTime = start;
-      video.onseeked = function() {
-        video.onseeked = null;
-        recorder.start(250);
-        video.play().then(function() {
-          requestAnimationFrame(stopAtEnd);
-        }).catch(function(err) {
-          exporting = false;
-          try { recorder.stop(); } catch (e) {}
-          setStatus('Could not play for export: ' + err.message, 'warn');
-          syncInputs();
+      exportMp4().then(function(exported) {
+        finishExport(exported);
+      }).catch(function(err) {
+        setStatus('MP4 export failed, trying WebM fallback: ' + err.message, 'warn');
+        return exportWebmFallback().then(function(exported) {
+          finishExport(exported);
+          setStatus('MP4 failed, but WebM fallback is ready: ' + exported.name, 'warn');
         });
-      };
+      }).catch(function(err) {
+        setStatus('Export failed: ' + err.message, 'warn');
+      }).finally(function() {
+        exporting = false;
+        video.pause();
+        syncInputs();
+      });
     });
 
     if ('serviceWorker' in navigator) {

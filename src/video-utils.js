@@ -23,12 +23,13 @@ function formatTime(seconds) {
   return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0') + '.' + tenths;
 }
 
-function exportFileName(originalName) {
+function exportFileName(originalName, extension) {
+  var safeExtension = String(extension || 'mp4').replace(/[^a-z0-9]+/gi, '').toLowerCase() || 'mp4';
   var base = String(originalName || 'video')
     .replace(/\.[^.]+$/, '')
     .replace(/[^a-z0-9_-]+/gi, '-')
     .replace(/^-+|-+$/g, '') || 'video';
-  return base + '-trimmed.webm';
+  return base + '-trimmed.' + safeExtension;
 }
 
 export { clampRange, formatTime, exportFileName };
