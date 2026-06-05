@@ -1,4 +1,4 @@
-const CACHE = 'video-editor-v4';
+const CACHE = 'video-editor-v5';
 const ASSETS = [
   './',
   './index.html',
