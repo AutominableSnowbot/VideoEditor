@@ -19,8 +19,9 @@ test('exportFileName creates a safe mp4 name by default', () => {
   assert.equal(exportFileName('My Clip!.mov'), 'My-Clip-trimmed.mp4');
 });
 
-test('exportFileName can create fallback webm names', () => {
+test('exportFileName can create fallback webm and gif names', () => {
   assert.equal(exportFileName('My Clip!.mp4', 'webm'), 'My-Clip-trimmed.webm');
+  assert.equal(exportFileName('My Clip!.mp4', 'gif'), 'My-Clip-trimmed.gif');
 });
 
 test('exportReadyMessage names the finished file', () => {

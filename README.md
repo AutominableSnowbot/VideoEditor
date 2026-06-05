@@ -7,7 +7,7 @@ A tiny local-first video editing PWA.
 - Pick a local video file.
 - Preview it in-browser.
 - Set trim start/end times.
-- Export the selected range as `.mp4` using browser-loaded `ffmpeg.wasm`.
+- Export the selected range as `.mp4` or silent `.gif` using browser-loaded `ffmpeg.wasm`.
 - Optionally show a browser notification when the export download is ready.
 - Falls back to `.webm` recording if MP4 export fails.
 - No upload, no backend, no cloud processing.
