@@ -31,7 +31,7 @@
     .field span { display:block; color:#9fb6c8; font-size:12px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
     .field strong { font-variant-numeric:tabular-nums; font-size:18px; }
     input[type=range] { width:100%; accent-color:var(--cyan); }
-    input[type=number], select { width:100%; margin-top:8px; padding:10px; border-radius:12px; border:1px solid rgba(148,163,184,.3); background:rgba(2,6,23,.75); color:#e5f7ff; font-size:16px; }
+    input[type=number], input[inputmode=decimal], select { width:100%; margin-top:8px; padding:10px; border-radius:12px; border:1px solid rgba(148,163,184,.3); background:rgba(2,6,23,.75); color:#e5f7ff; font-size:16px; }
     .buttons { display:flex; gap:10px; flex-wrap:wrap; }
     button, .download { border:0; border-radius:16px; padding:12px 14px; color:#06121f; font-weight:800; background:linear-gradient(135deg,var(--cyan),var(--emerald)); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:46px; }
     button.secondary { color:#dff7ff; background:rgba(30,41,59,.82); border:1px solid rgba(148,163,184,.24); }
@@ -78,13 +78,13 @@
             <span>Start</span>
             <strong id="startLabel">00:00.0</strong>
             <input id="startRange" type="range" min="0" max="0" step="0.1" value="0" />
-            <input id="startNumber" type="number" min="0" step="0.1" value="0" />
+            <input id="startNumber" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" min="0" step="0.1" value="0" />
           </div>
           <div class="field">
             <span>End</span>
             <strong id="endLabel">00:00.0</strong>
             <input id="endRange" type="range" min="0" max="0" step="0.1" value="0" />
-            <input id="endNumber" type="number" min="0" step="0.1" value="0" />
+            <input id="endNumber" type="text" inputmode="decimal" pattern="[0-9]*[.]?[0-9]*" min="0" step="0.1" value="0" />
           </div>
         </div>
         <div class="timeline"><div class="window" id="window"></div></div>
@@ -262,14 +262,14 @@
       if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
     }
 
-    function syncInputs() {
+    function syncInputs(preserveFocusedNumber) {
       var range = clampRange(start, end, video.duration || 0);
       start = range.start;
       end = range.end;
       startRange.value = start;
       endRange.value = end;
-      startNumber.value = start.toFixed(1);
-      endNumber.value = end.toFixed(1);
+      if (!preserveFocusedNumber || document.activeElement !== startNumber) startNumber.value = start.toFixed(1);
+      if (!preserveFocusedNumber || document.activeElement !== endNumber) endNumber.value = end.toFixed(1);
       startLabel.textContent = formatTime(start);
       endLabel.textContent = formatTime(end);
       var duration = video.duration || 1;
@@ -287,10 +287,19 @@
       syncInputs();
     }
 
-    function setFromInput(which, value) {
-      if (which === 'start') start = parseFloat(value);
-      if (which === 'end') end = parseFloat(value);
-      syncInputs();
+    function setFromInput(which, value, preserveFocusedNumber) {
+      var parsed = parseFloat(value);
+      if (!Number.isFinite(parsed)) {
+        syncInputs(true);
+        return;
+      }
+      if (which === 'start') start = parsed;
+      if (which === 'end') end = parsed;
+      syncInputs(preserveFocusedNumber);
+    }
+
+    function commitNumberInput(which, input) {
+      setFromInput(which, input.value, false);
     }
 
     function inputFileName(name) {
@@ -538,10 +547,14 @@
       setStatus('Ready. Set start/end, preview, then export.', 'ok');
     });
 
-    startRange.addEventListener('input', function(e) { setFromInput('start', e.target.value); });
-    endRange.addEventListener('input', function(e) { setFromInput('end', e.target.value); });
-    startNumber.addEventListener('input', function(e) { setFromInput('start', e.target.value); });
-    endNumber.addEventListener('input', function(e) { setFromInput('end', e.target.value); });
+    startRange.addEventListener('input', function(e) { setFromInput('start', e.target.value, false); });
+    endRange.addEventListener('input', function(e) { setFromInput('end', e.target.value, false); });
+    startNumber.addEventListener('input', function(e) { setFromInput('start', e.target.value, true); });
+    endNumber.addEventListener('input', function(e) { setFromInput('end', e.target.value, true); });
+    startNumber.addEventListener('change', function(e) { commitNumberInput('start', e.target); });
+    endNumber.addEventListener('change', function(e) { commitNumberInput('end', e.target); });
+    startNumber.addEventListener('blur', function(e) { commitNumberInput('start', e.target); });
+    endNumber.addEventListener('blur', function(e) { commitNumberInput('end', e.target); });
 
     previewBtn.addEventListener('click', function() {
       if (!video.src) return;
