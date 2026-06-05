@@ -45,6 +45,7 @@
     .timeline { height:12px; border-radius:999px; background:#1e293b; position:relative; overflow:hidden; margin-top:8px; }
     .window { position:absolute; top:0; bottom:0; background:linear-gradient(90deg,var(--cyan),var(--emerald)); opacity:.85; }
     .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#cbd5e1; }
+    .quality-field[hidden] { display:none; }
     @media (max-width:640px) { .grid { grid-template-columns:1fr; } .buttons button, .download { flex:1 1 100%; } h1{font-size:28px;} }
   </style>
 </head>
@@ -98,6 +99,15 @@
             <option value="gif">GIF animation — silent, easy to share</option>
           </select>
           <div class="hint" id="formatHint">MP4 uses FFmpeg in-browser. If MP4 fails, ClipForge tries WebM.</div>
+        </div>
+        <div class="field quality-field" id="gifQualityField" style="margin-bottom:10px;" hidden>
+          <span>GIF quality</span>
+          <select id="gifQualitySelect" aria-label="GIF quality">
+            <option value="share">Shareable — 480px / 12 fps</option>
+            <option value="high" selected>High quality — 720px / 18 fps</option>
+            <option value="max">Maximum — source width / 24 fps</option>
+          </select>
+          <div class="hint" id="gifQualityHint">High quality improves detail and motion but creates a larger file.</div>
         </div>
         <div class="buttons">
           <button id="previewBtn" class="secondary">▶ Preview trim</button>
@@ -184,6 +194,9 @@
     var exportBtn = document.getElementById('exportBtn');
     var formatSelect = document.getElementById('formatSelect');
     var formatHint = document.getElementById('formatHint');
+    var gifQualityField = document.getElementById('gifQualityField');
+    var gifQualitySelect = document.getElementById('gifQualitySelect');
+    var gifQualityHint = document.getElementById('gifQualityHint');
     var resetBtn = document.getElementById('resetBtn');
     var notifyBtn = document.getElementById('notifyBtn');
     var download = document.getElementById('download');
@@ -412,6 +425,38 @@
       });
     }
 
+    function getGifQualitySettings() {
+      var quality = gifQualitySelect.value || 'high';
+      if (quality === 'max') {
+        return {
+          label: 'maximum quality',
+          fps: 24,
+          scale: 'iw:-1',
+          colors: 256,
+          dither: 'sierra2_4a',
+          hint: 'Maximum keeps source width at 24 fps. Best quality, but GIF files can get very large.'
+        };
+      }
+      if (quality === 'share') {
+        return {
+          label: 'shareable',
+          fps: 12,
+          scale: '480:-1',
+          colors: 160,
+          dither: 'bayer:bayer_scale=3',
+          hint: 'Shareable makes smaller GIFs: 480px wide, 12 fps.'
+        };
+      }
+      return {
+        label: 'high quality',
+        fps: 18,
+        scale: '720:-1',
+        colors: 256,
+        dither: 'sierra2_4a',
+        hint: 'High quality improves detail and motion but creates a larger file.'
+      };
+    }
+
     function exportGif() {
       if (!currentFile) return Promise.reject(new Error('No video selected'));
       currentEncodingLabel = 'GIF';
@@ -419,6 +464,8 @@
       var sourceName = inputFileName(currentFileName);
       var paletteName = 'clipforge-palette.png';
       var outputName = exportFileName(currentFileName, 'gif');
+      var gifSettings = getGifQualitySettings();
+      var gifFilter = 'fps=' + gifSettings.fps + ',scale=' + gifSettings.scale + ':flags=lanczos';
       return loadFfmpeg().then(function(ffmpeg) {
         setStatus('Preparing GIF export...', '');
         return currentFile.arrayBuffer().then(function(buffer) {
@@ -429,7 +476,7 @@
             '-ss', String(start),
             '-t', String(duration),
             '-i', sourceName,
-            '-vf', 'fps=12,scale=480:-1:flags=lanczos,palettegen=max_colors=128',
+            '-vf', gifFilter + ',palettegen=max_colors=' + gifSettings.colors,
             paletteName
           ]);
         }).then(function(code) {
@@ -440,7 +487,7 @@
             '-t', String(duration),
             '-i', sourceName,
             '-i', paletteName,
-            '-lavfi', 'fps=12,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3',
+            '-lavfi', gifFilter + '[x];[x][1:v]paletteuse=dither=' + gifSettings.dither,
             '-loop', '0',
             outputName
           ]);
@@ -458,10 +505,14 @@
 
     function updateFormatHint() {
       if (formatSelect.value === 'gif') {
-        formatHint.textContent = 'GIF export is silent and downscaled for sharing. Short clips work best.';
+        var gifSettings = getGifQualitySettings();
+        formatHint.textContent = 'GIF export is silent. Choose higher quality for better detail/motion, at the cost of larger files.';
+        gifQualityHint.textContent = gifSettings.hint;
+        gifQualityField.hidden = false;
         exportBtn.textContent = '⬇ Export GIF';
       } else {
         formatHint.textContent = 'MP4 uses FFmpeg in-browser. If MP4 fails, ClipForge tries WebM.';
+        gifQualityField.hidden = true;
         exportBtn.textContent = '⬇ Export trim';
       }
     }
@@ -575,6 +626,7 @@
     endHereBtn.addEventListener('click', function() { end = video.currentTime || end; syncInputs(); });
     notifyBtn.addEventListener('click', requestExportNotifications);
     formatSelect.addEventListener('change', updateFormatHint);
+    gifQualitySelect.addEventListener('change', updateFormatHint);
 
     resetBtn.addEventListener('click', function() {
       if (!video.duration) return;
